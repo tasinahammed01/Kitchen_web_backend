@@ -1,6 +1,39 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+// Private supplier source information - SERVER ONLY
+export interface ISupplierSource {
+  platform: 'alibaba' | 'other';
+  supplierName?: string;
+  productUrl?: string;
+  supplierProductId?: string;
+  supplierVariantId?: string;
+  sourceCountry?: string;
+  moq?: number;
+  notes?: string;
+}
+
+// Private cost information - SERVER ONLY
+export interface ISupplierCost {
+  unitCost?: number;
+  shippingCost?: number;
+  currency?: string;
+}
+
+// Private fulfillment metadata - SERVER ONLY
+export interface IFulfillment {
+  mode: 'manual_dropship' | 'manual_stock' | 'other';
+  supplierLeadTimeMinDays?: number;
+  supplierLeadTimeMaxDays?: number;
+}
+
+// Public delivery estimate - CUSTOMER FACING
+export interface IDeliveryEstimate {
+  minDays: number;
+  maxDays: number;
+}
+
 export interface IProduct extends Document {
+  // PUBLIC FIELDS
   slug: string;
   name: string;
   description: string;
@@ -10,7 +43,7 @@ export interface IProduct extends Document {
   rating: number;
   reviewCount: number;
   images: string[];
-  category: 'Running' | 'Lifestyle' | 'Basketball' | 'Training' | 'Casual' | 'Luxury';
+  category: 'Kitchen Tools' | 'Cooking Accessories' | 'Food Preparation' | 'Storage & Organization' | 'Drinkware' | 'Cleaning Accessories';
   brand: string;
   stock: number;
   tags: string[];
@@ -26,12 +59,21 @@ export interface IProduct extends Document {
     name: string;
     available: boolean;
   }>;
+  deliveryEstimate?: IDeliveryEstimate;
+
+  // PRIVATE FIELDS - SERVER ONLY
+  supplierSource?: ISupplierSource;
+  supplierCost?: ISupplierCost;
+  fulfillment?: IFulfillment;
+  internalNotes?: string;
+
   createdAt: Date;
   updatedAt: Date;
 }
 
 const ProductSchema: Schema = new Schema(
   {
+    // PUBLIC FIELDS
     slug: {
       type: String,
       required: true,
@@ -82,7 +124,7 @@ const ProductSchema: Schema = new Schema(
     category: {
       type: String,
       required: true,
-      enum: ['Running', 'Lifestyle', 'Basketball', 'Training', 'Casual', 'Luxury'],
+      enum: ['Kitchen Tools', 'Cooking Accessories', 'Food Preparation', 'Storage & Organization', 'Drinkware', 'Cleaning Accessories'],
     },
     brand: {
       type: String,
@@ -139,9 +181,183 @@ const ProductSchema: Schema = new Schema(
         },
       },
     ],
+    deliveryEstimate: {
+      minDays: {
+        type: Number,
+        min: 0,
+        required: function(this: any) {
+          // If deliveryEstimate is present, both minDays and maxDays should be present
+          return this.deliveryEstimate?.maxDays !== undefined;
+        },
+        validate: {
+          validator: function(this: any, value: number) {
+            // Validate minDays <= maxDays when both are present
+            const maxDays = this.deliveryEstimate?.maxDays;
+            if (maxDays !== undefined && value !== undefined) {
+              return value <= maxDays;
+            }
+            return true;
+          },
+          message: 'minDays must be less than or equal to maxDays',
+        },
+      },
+      maxDays: {
+        type: Number,
+        min: 0,
+        required: function(this: any) {
+          // If deliveryEstimate is present, both minDays and maxDays should be present
+          return this.deliveryEstimate?.minDays !== undefined;
+        },
+        validate: {
+          validator: function(this: any, value: number) {
+            // Validate maxDays >= minDays when both are present
+            const minDays = this.deliveryEstimate?.minDays;
+            if (minDays !== undefined && value !== undefined) {
+              return value >= minDays;
+            }
+            return true;
+          },
+          message: 'maxDays must be greater than or equal to minDays',
+        },
+      },
+    },
+
+    // PRIVATE FIELDS - SERVER ONLY
+    supplierSource: {
+      platform: {
+        type: String,
+        enum: ['alibaba', 'other'],
+      },
+      supplierName: {
+        type: String,
+        trim: true,
+      },
+      productUrl: {
+        type: String,
+        trim: true,
+        validate: {
+          validator: function(v: string) {
+            if (!v) return true;
+            try {
+              new URL(v);
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          message: 'Invalid URL format',
+        },
+      },
+      supplierProductId: {
+        type: String,
+        trim: true,
+      },
+      supplierVariantId: {
+        type: String,
+        trim: true,
+      },
+      sourceCountry: {
+        type: String,
+        trim: true,
+      },
+      moq: {
+        type: Number,
+        min: 1,
+      },
+      notes: {
+        type: String,
+        trim: true,
+      },
+    },
+    supplierCost: {
+      unitCost: {
+        type: Number,
+        min: 0,
+      },
+      shippingCost: {
+        type: Number,
+        min: 0,
+      },
+      currency: {
+        type: String,
+        default: 'USD',
+        trim: true,
+        uppercase: true,
+        validate: {
+          validator: function(v: string) {
+            // Must be exactly 3 uppercase alphabetic characters (ISO 4217 currency code)
+            return /^[A-Z]{3}$/.test(v);
+          },
+          message: 'Currency must be a valid 3-letter ISO 4217 code (e.g., USD, EUR, GBP)',
+        },
+      },
+    },
+    fulfillment: {
+      mode: {
+        type: String,
+        enum: ['manual_dropship', 'manual_stock', 'other'],
+        default: 'manual_dropship',
+      },
+      supplierLeadTimeMinDays: {
+        type: Number,
+        min: 0,
+        validate: {
+          validator: function(this: any, value: number) {
+            // Validate supplierLeadTimeMinDays <= supplierLeadTimeMaxDays when both are present
+            const maxDays = this.fulfillment?.supplierLeadTimeMaxDays;
+            if (maxDays !== undefined && value !== undefined) {
+              return value <= maxDays;
+            }
+            return true;
+          },
+          message: 'supplierLeadTimeMinDays must be less than or equal to supplierLeadTimeMaxDays',
+        },
+      },
+      supplierLeadTimeMaxDays: {
+        type: Number,
+        min: 0,
+        validate: {
+          validator: function(this: any, value: number) {
+            // Validate supplierLeadTimeMaxDays >= supplierLeadTimeMinDays when both are present
+            const minDays = this.fulfillment?.supplierLeadTimeMinDays;
+            if (minDays !== undefined && value !== undefined) {
+              return value >= minDays;
+            }
+            return true;
+          },
+          message: 'supplierLeadTimeMaxDays must be greater than or equal to supplierLeadTimeMinDays',
+        },
+      },
+    },
+    internalNotes: {
+      type: String,
+      trim: true,
+    },
   },
   {
     timestamps: true,
+    toJSON: {
+      // Automatically exclude private fields when converting to JSON
+      transform: function(doc: any, ret: any) {
+        delete ret.supplierSource;
+        delete ret.supplierCost;
+        delete ret.fulfillment;
+        delete ret.internalNotes;
+        delete ret.__v;
+        return ret;
+      },
+    },
+    toObject: {
+      // Also exclude from toObject for consistency
+      transform: function(doc: any, ret: any) {
+        delete ret.supplierSource;
+        delete ret.supplierCost;
+        delete ret.fulfillment;
+        delete ret.internalNotes;
+        delete ret.__v;
+        return ret;
+      },
+    },
   }
 );
 

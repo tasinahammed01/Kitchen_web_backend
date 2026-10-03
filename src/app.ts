@@ -6,10 +6,17 @@ import cookieParser from 'cookie-parser';
 import { env } from './config/env';
 import healthRouter from './routes/health.route';
 import productRouter from './routes/product.routes';
+import authRouter from './routes/auth.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
 
 const app = express();
+
+// Configure trust proxy for rate limiting
+// TRUST_PROXY=0: No proxy (direct deployment) - DEFAULT
+// TRUST_PROXY=1: Single trusted reverse proxy (e.g., Nginx)
+// TRUST_PROXY=true: Trust all proxies (NOT recommended for production)
+app.set('trust proxy', env.TRUST_PROXY);
 
 // Global Middlewares
 app.use(helmet());
@@ -21,14 +28,15 @@ app.use(cors({
   credentials: true,
 }));
 
-// Request Parsers
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Request Parsers with size limits
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(cookieParser());
 
 // API Routes
 app.use('/api', healthRouter);
 app.use('/api/products', productRouter);
+app.use('/api/auth', authRouter);
 
 // Not Found Route Handler
 app.use(notFoundHandler);

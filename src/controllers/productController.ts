@@ -1,14 +1,19 @@
 import { Request, Response } from 'express';
 import { Product } from '../models/Product';
+import { toPublicProduct, toPublicProducts } from '../utils/productSerializer';
+import { filterPublicProductFields } from '../utils/productFieldFilter';
 
 // Get all products
 export const getAllProducts = async (req: Request, res: Response) => {
   try {
-    const products = await Product.find({}).sort({ createdAt: -1 });
+    // Query-level defense: exclude private fields from database query
+    const products = await Product.find({})
+      .select('-supplierSource -supplierCost -fulfillment -internalNotes')
+      .sort({ createdAt: -1 });
     res.json({
       success: true,
       count: products.length,
-      data: products,
+      data: toPublicProducts(products),
     });
   } catch (error) {
     res.status(500).json({
@@ -23,7 +28,9 @@ export const getAllProducts = async (req: Request, res: Response) => {
 export const getProductBySlug = async (req: Request, res: Response) => {
   try {
     const { slug } = req.params;
-    const product = await Product.findOne({ slug });
+    // Query-level defense: exclude private fields from database query
+    const product = await Product.findOne({ slug })
+      .select('-supplierSource -supplierCost -fulfillment -internalNotes');
 
     if (!product) {
       return res.status(404).json({
@@ -34,7 +41,7 @@ export const getProductBySlug = async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: product,
+      data: toPublicProduct(product),
     });
   } catch (error) {
     res.status(500).json({
@@ -49,12 +56,15 @@ export const getProductBySlug = async (req: Request, res: Response) => {
 export const getProductsByCategory = async (req: Request, res: Response) => {
   try {
     const { category } = req.params;
-    const products = await Product.find({ category }).sort({ createdAt: -1 });
+    // Query-level defense: exclude private fields from database query
+    const products = await Product.find({ category })
+      .select('-supplierSource -supplierCost -fulfillment -internalNotes')
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
       count: products.length,
-      data: products,
+      data: toPublicProducts(products),
     });
   } catch (error) {
     res.status(500).json({
@@ -68,12 +78,15 @@ export const getProductsByCategory = async (req: Request, res: Response) => {
 // Get featured products
 export const getFeaturedProducts = async (req: Request, res: Response) => {
   try {
-    const products = await Product.find({ featured: true }).sort({ createdAt: -1 });
+    // Query-level defense: exclude private fields from database query
+    const products = await Product.find({ featured: true })
+      .select('-supplierSource -supplierCost -fulfillment -internalNotes')
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
       count: products.length,
-      data: products,
+      data: toPublicProducts(products),
     });
   } catch (error) {
     res.status(500).json({
@@ -87,12 +100,15 @@ export const getFeaturedProducts = async (req: Request, res: Response) => {
 // Get new arrivals
 export const getNewArrivals = async (req: Request, res: Response) => {
   try {
-    const products = await Product.find({ newArrival: true }).sort({ createdAt: -1 });
+    // Query-level defense: exclude private fields from database query
+    const products = await Product.find({ newArrival: true })
+      .select('-supplierSource -supplierCost -fulfillment -internalNotes')
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
       count: products.length,
-      data: products,
+      data: toPublicProducts(products),
     });
   } catch (error) {
     res.status(500).json({
@@ -106,12 +122,15 @@ export const getNewArrivals = async (req: Request, res: Response) => {
 // Get best sellers
 export const getBestSellers = async (req: Request, res: Response) => {
   try {
-    const products = await Product.find({ bestSeller: true }).sort({ createdAt: -1 });
+    // Query-level defense: exclude private fields from database query
+    const products = await Product.find({ bestSeller: true })
+      .select('-supplierSource -supplierCost -fulfillment -internalNotes')
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
       count: products.length,
-      data: products,
+      data: toPublicProducts(products),
     });
   } catch (error) {
     res.status(500).json({
@@ -123,13 +142,29 @@ export const getBestSellers = async (req: Request, res: Response) => {
 };
 
 // Create product (admin)
+// SECURITY NOTE: This endpoint is currently unprotected (no authentication).
+// Mass-assignment protection is applied to prevent modification of private supplier fields.
+// Full admin authorization will be implemented in a later phase.
 export const createProduct = async (req: Request, res: Response) => {
   try {
-    const product = await Product.create(req.body);
+    // SECURITY: Use explicit allowlist to prevent mass-assignment attacks
+    // This rejects MongoDB operators ($set, $unset, etc.), dotted paths, and unknown fields
+    const sanitized = filterPublicProductFields(req.body);
+
+    // Check if any non-allowed fields were present
+    const sanitizedKeys = Object.keys(sanitized);
+    const requestKeys = Object.keys(req.body);
+    const rejectedKeys = requestKeys.filter(key => !sanitizedKeys.includes(key));
+
+    if (rejectedKeys.length > 0) {
+      console.warn(`Attempted to create product with rejected fields: ${rejectedKeys.join(', ')}`);
+    }
+
+    const product = await Product.create(sanitized);
 
     res.status(201).json({
       success: true,
-      data: product,
+      data: toPublicProduct(product),
     });
   } catch (error) {
     res.status(400).json({
@@ -141,13 +176,28 @@ export const createProduct = async (req: Request, res: Response) => {
 };
 
 // Update product (admin)
+// SECURITY NOTE: This endpoint is currently unprotected (no authentication).
+// Mass-assignment protection is applied to prevent modification of private supplier fields.
+// Full admin authorization will be implemented in a later phase.
 export const updateProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const product = await Product.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true,
-    });
+
+    // SECURITY: Use explicit allowlist to prevent mass-assignment attacks
+    // This rejects MongoDB operators ($set, $unset, etc.), dotted paths, and unknown fields
+    const sanitized = filterPublicProductFields(req.body);
+
+    // Check if any non-allowed fields were present
+    const sanitizedKeys = Object.keys(sanitized);
+    const requestKeys = Object.keys(req.body);
+    const rejectedKeys = requestKeys.filter(key => !sanitizedKeys.includes(key));
+
+    if (rejectedKeys.length > 0) {
+      console.warn(`Attempted to update product with rejected fields: ${rejectedKeys.join(', ')}`);
+    }
+
+    // Use findById + save for full Mongoose document validation
+    const product = await Product.findById(id);
 
     if (!product) {
       return res.status(404).json({
@@ -156,9 +206,15 @@ export const updateProduct = async (req: Request, res: Response) => {
       });
     }
 
+    // Apply sanitized allowed values
+    Object.assign(product, sanitized);
+
+    // Save to trigger full validation including cross-field validators
+    await product.save();
+
     res.json({
       success: true,
-      data: product,
+      data: toPublicProduct(product),
     });
   } catch (error) {
     res.status(400).json({
