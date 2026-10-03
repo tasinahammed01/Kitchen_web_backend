@@ -7,6 +7,7 @@ import { env } from './config/env';
 import healthRouter from './routes/health.route';
 import productRouter from './routes/product.routes';
 import authRouter from './routes/auth.routes';
+import adminProductRouter from './routes/adminProduct.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
 
@@ -15,7 +16,9 @@ const app = express();
 // Configure trust proxy for rate limiting
 // TRUST_PROXY=0: No proxy (direct deployment) - DEFAULT
 // TRUST_PROXY=1: Single trusted reverse proxy (e.g., Nginx)
-// TRUST_PROXY=true: Trust all proxies (NOT recommended for production)
+// TRUST_PROXY=2: Two trusted reverse proxies
+// TRUST_PROXY="loopback, 123.45.67.89": Explicit IP/subnet notation
+// SECURITY: TRUST_PROXY=true is NOT allowed (rejects at startup)
 app.set('trust proxy', env.TRUST_PROXY);
 
 // Global Middlewares
@@ -37,6 +40,7 @@ app.use(cookieParser());
 app.use('/api', healthRouter);
 app.use('/api/products', productRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/admin/products', adminProductRouter);
 
 // Not Found Route Handler
 app.use(notFoundHandler);

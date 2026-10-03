@@ -362,7 +362,7 @@ const ProductSchema: Schema = new Schema(
 );
 
 // Index for faster queries
-ProductSchema.index({ slug: 1 });
+// Note: slug already has unique: true in schema definition, no duplicate index needed
 ProductSchema.index({ category: 1 });
 ProductSchema.index({ featured: 1, newArrival: 1, bestSeller: 1 });
 ProductSchema.index({ price: 1 });

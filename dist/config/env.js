@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.env = void 0;
+exports.env = exports.parseTrustProxy = void 0;
 const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
 // Load configuration from .env file
@@ -51,6 +51,59 @@ const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 // Convert SESSION_DURATION_MS to JWT_EXPIRES_IN format (e.g., '7d')
 const SESSION_DURATION_DAYS = Math.floor(SESSION_DURATION_MS / (24 * 60 * 60 * 1000));
 const JWT_EXPIRES_IN = `${SESSION_DURATION_DAYS}d`;
+/**
+ * Parse TRUST_PROXY environment variable
+ *
+ * Accepted formats:
+ * - unset or "0" → 0 (no proxy, direct deployment - DEFAULT)
+ * - "1" → 1 (single trusted reverse proxy)
+ * - "2" → 2 (two trusted reverse proxies)
+ * - "false" → false (no proxy, equivalent to 0)
+ * - explicit IP/subnet values (e.g., "loopback, 123.45.67.89")
+ *
+ * REJECTED:
+ * - "true" or any generic trust-all configuration
+ * - negative numbers
+ * - arbitrary strings that are not valid IP/subnet notation
+ *
+ * Returns: number | boolean | string (Express accepts all these types)
+ */
+const parseTrustProxy = (trustProxyValue) => {
+    const trustProxy = trustProxyValue !== undefined ? trustProxyValue : process.env.TRUST_PROXY;
+    // If unset, default to 0 (no proxy - safe default)
+    if (trustProxy === undefined || trustProxy === null || trustProxy === '') {
+        return 0;
+    }
+    // If "0", return number 0 (no proxy)
+    if (trustProxy === '0') {
+        return 0;
+    }
+    // If "1", return number 1 (single trusted proxy)
+    if (trustProxy === '1') {
+        return 1;
+    }
+    // If "2", return number 2 (two trusted proxies)
+    if (trustProxy === '2') {
+        return 2;
+    }
+    // If "false", return boolean false (no proxy)
+    if (trustProxy === 'false') {
+        return false;
+    }
+    // REJECT "true" - generic trust-all is not allowed
+    if (trustProxy === 'true') {
+        throw new Error('TRUST_PROXY=true is not allowed. Use explicit hop count (e.g., 1 for one Nginx proxy) or specific IP/subnet notation. Generic trust-all configurations are unsafe for IP-based rate limiting.');
+    }
+    // REJECT negative numbers
+    if (/^-\d+$/.test(trustProxy)) {
+        throw new Error(`TRUST_PROXY="${trustProxy}" is invalid. Negative hop counts are not allowed.`);
+    }
+    // For other values (e.g., subnet notation like "loopback, 123.45.67.89"),
+    // return as-is for Express to parse
+    // Note: Express will validate these at runtime; invalid values will cause Express errors
+    return trustProxy;
+};
+exports.parseTrustProxy = parseTrustProxy;
 exports.env = {
     NODE_ENV,
     PORT: parseInt(process.env.PORT || '5000', 10),
@@ -60,5 +113,5 @@ exports.env = {
     AUTH_COOKIE_NAME: process.env.AUTH_COOKIE_NAME || 'auth_token',
     CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:3000',
     SESSION_DURATION_MS,
-    TRUST_PROXY: process.env.TRUST_PROXY || '0', // Default: do not trust proxy (safe for direct deployment)
+    TRUST_PROXY: (0, exports.parseTrustProxy)(),
 };

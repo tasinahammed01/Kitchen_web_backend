@@ -1,38 +1,51 @@
 /**
- * SECURITY TEST: Controller Sanitizer Integration Verification
+ * PUBLIC PRODUCT CONTROLLER TESTS - Phase 4
  *
- * This test verifies that the product controller functions
- * use the filterPublicProductFields sanitizer for mass-assignment protection.
+ * Public product routes are READ-ONLY.
+ * All mutation operations (create, update, delete) are handled through the admin API.
  *
- * This ensures the sanitizer cannot be bypassed by not using it in the controller.
+ * This test verifies that the public controller only exports read operations.
+ *
+ * Run with: npm test
  */
 
 import { describe, it, expect } from 'vitest';
-import { filterPublicProductFields } from '../../utils/productFieldFilter';
+import * as productController from '../../controllers/productController';
 
-describe('Controller Sanitizer Integration', () => {
-  it('should reject malicious payloads with supplierCost', () => {
-    const maliciousPayload = {
-      name: 'Test',
-      supplierCost: { unitCost: 1 },
-    };
-
-    const sanitized = filterPublicProductFields(maliciousPayload);
-
-    expect('supplierCost' in sanitized).toBe(false);
+describe('Public Product Controller Read-Only Verification', () => {
+  it('should export getAllProducts', () => {
+    expect(productController.getAllProducts).toBeDefined();
   });
 
-  it('should allow legitimate fields', () => {
-    const legitimatePayload = {
-      name: 'Updated Product',
-      price: 29.99,
-      stock: 20,
-    };
+  it('should export getProductBySlug', () => {
+    expect(productController.getProductBySlug).toBeDefined();
+  });
 
-    const legitimateSanitized = filterPublicProductFields(legitimatePayload);
+  it('should export getProductsByCategory', () => {
+    expect(productController.getProductsByCategory).toBeDefined();
+  });
 
-    expect(legitimateSanitized.name).toBe('Updated Product');
-    expect(legitimateSanitized.price).toBe(29.99);
-    expect(legitimateSanitized.stock).toBe(20);
+  it('should export getFeaturedProducts', () => {
+    expect(productController.getFeaturedProducts).toBeDefined();
+  });
+
+  it('should export getNewArrivals', () => {
+    expect(productController.getNewArrivals).toBeDefined();
+  });
+
+  it('should export getBestSellers', () => {
+    expect(productController.getBestSellers).toBeDefined();
+  });
+
+  it('should NOT export createProduct', () => {
+    expect((productController as any).createProduct).toBeUndefined();
+  });
+
+  it('should NOT export updateProduct', () => {
+    expect((productController as any).updateProduct).toBeUndefined();
+  });
+
+  it('should NOT export deleteProduct', () => {
+    expect((productController as any).deleteProduct).toBeUndefined();
   });
 });
